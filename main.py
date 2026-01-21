@@ -14,8 +14,13 @@ SPEED_INCREMENT = 0.5
 SPEED_UP_TIME = 5000       
 
 # Player settings
-PLAYER_SPEED = 7 
-NITRO_MULTIPLIER = 1.5     # Speed multiplier when holding Shift
+PLAYER_SPEED = 9
+NITRO_MULTIPLIER = 1.8 
+
+# --- NITRO SYSTEM ---
+MAX_NITRO_FUEL = 100
+NITRO_DRAIN_RATE = 1.0
+NITRO_RECHARGE_RATE = 0.3 
 
 # --- ROAD BOUNDARIES ---
 ROAD_TOP = 420
@@ -27,7 +32,7 @@ ROAD_RIGHT = 1280
 pygame.init()
 pygame.font.init()
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("TRON RIDER: ULTIMATE EDITION")
+pygame.display.set_caption("NEON RIDER:NITRO EDITION")
 clock = pygame.time.Clock()
 
 # --- CUSTOM EVENTS ---
@@ -35,9 +40,10 @@ SPEED_UP_EVENT = pygame.USEREVENT + 1
 pygame.time.set_timer(SPEED_UP_EVENT, SPEED_UP_TIME)
 
 # --- FONTS ---
-font_score = pygame.font.SysFont("Arial", 30, bold=True)
-font_ui = pygame.font.SysFont("Arial", 20)
-font_gameover = pygame.font.SysFont("Arial", 60, bold=True)
+font_score = pygame.font.SysFont("Impact", 30) 
+font_ui = pygame.font.SysFont("Arial", 20, bold=True)
+font_gameover = pygame.font.SysFont("Impact", 80)
+font_title = pygame.font.SysFont("Impact", 100) # Bigger font for Title
 
 # --- ASSETS ---
 try:
@@ -57,23 +63,20 @@ except FileNotFoundError:
     sys.exit()
 
 # --- CLASSES ---
-
 class Particle:
-    """ A simple square particle that flies in a random direction """
     def __init__(self, x, y, color):
         self.x = x
         self.y = y
         self.color = color
         self.size = random.randint(4, 10)
-        self.life = 1.0 # 100% opacity
-        # Random velocity
+        self.life = 1.0 
         self.vx = random.uniform(-5, 5)
         self.vy = random.uniform(-5, 5)
 
     def update(self):
         self.x += self.vx
         self.y += self.vy
-        self.life -= 0.02 # Fade out speed
+        self.life -= 0.02 
         if self.life < 0: self.life = 0
 
     def draw(self, surf):
@@ -111,19 +114,18 @@ def reset_game():
     score = 0
     bg_x = 0
     current_speed = INITIAL_SCROLL_SPEED
-    return player_rect, obstacles, particles, score, bg_x, current_speed
+    nitro_fuel = MAX_NITRO_FUEL 
+    return player_rect, obstacles, particles, score, bg_x, current_speed, nitro_fuel
 
 # --- MAIN ---
 def main():
-    player_rect, obstacles, particles, score, bg_x, current_speed = reset_game()
+    player_rect, obstacles, particles, score, bg_x, current_speed, nitro_fuel = reset_game()
     high_score = get_high_score()
     
-    velocity_x = 0
     velocity_y = 0
     last_spawn_time = pygame.time.get_ticks()
     
-    # Game States
-    game_active = False # Start at menu
+    game_active = False 
     game_paused = False
     player_dead = False
     
@@ -131,18 +133,19 @@ def main():
     while running:
         current_time = pygame.time.get_ticks()
         keys = pygame.key.get_pressed()
+        
+        # Initialize is_nitro every frame to prevent crash
+        is_nitro = False 
 
         # 1. EVENT HANDLING
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            # PAUSE TOGGLE
             if event.type == pygame.KEYDOWN and event.key == pygame.K_p and game_active:
                 game_paused = not game_paused
 
             if game_active and not game_paused and not player_dead:
-                # Speed Up Event
                 if event.type == SPEED_UP_EVENT:
                     if current_speed < MAX_SPEED:
                         current_speed += SPEED_INCREMENT
@@ -151,54 +154,54 @@ def main():
                 if event.type == pygame.KEYDOWN:
                     if event.key == pygame.K_w: velocity_y = -PLAYER_SPEED
                     if event.key == pygame.K_s: velocity_y = PLAYER_SPEED
-                    if event.key == pygame.K_a: velocity_x = -PLAYER_SPEED
-                    if event.key == pygame.K_d: velocity_x = PLAYER_SPEED
                 
                 if event.type == pygame.KEYUP:
                     if event.key in [pygame.K_w, pygame.K_s]: velocity_y = 0
-                    if event.key in [pygame.K_a, pygame.K_d]: velocity_x = 0
             
-            # RESTART / START
             if (not game_active or player_dead) and event.type == pygame.KEYDOWN and event.key == pygame.K_SPACE:
-                player_rect, obstacles, particles, score, bg_x, current_speed = reset_game()
+                player_rect, obstacles, particles, score, bg_x, current_speed, nitro_fuel = reset_game()
+                # Reload high score just in case
                 high_score = get_high_score()
                 game_active = True
                 player_dead = False
                 game_paused = False
-                velocity_x = 0 
                 velocity_y = 0
 
         # --- LOGIC ---
         if game_active and not game_paused:
             
-            # NITRO LOGIC
-            is_nitro = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
-            actual_speed = current_speed * (1.5 if is_nitro else 1.0)
+            # --- NITRO LOGIC ---
+            wants_nitro = keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]
             
-            # Handle Death Animation
+            if wants_nitro and nitro_fuel > 0:
+                is_nitro = True
+                nitro_fuel -= NITRO_DRAIN_RATE
+            else:
+                if nitro_fuel < MAX_NITRO_FUEL:
+                    nitro_fuel += NITRO_RECHARGE_RATE
+            
+            actual_speed = current_speed * (NITRO_MULTIPLIER if is_nitro else 1.0)
+            
+            # --- DEATH CHECK ---
             if player_dead:
                 for p in particles: p.update()
-                if all(p.life <= 0 for p in particles): # Wait for particles to fade
-                    game_active = False # Show Game Over screen
+                if all(p.life <= 0 for p in particles): 
+                    game_active = False 
 
             else:
                 # Scroll BG
                 bg_x -= actual_speed
                 if bg_x <= -WIDTH: bg_x = 0
                 
-                # Move Player (with Nitro Shake effect)
+                # Move Player
                 shake_y = random.randint(-2, 2) if is_nitro else 0
-                player_rect.x += velocity_x
                 player_rect.y += velocity_y + shake_y
                 
                 # Boundaries
                 if player_rect.top < ROAD_TOP: player_rect.top = ROAD_TOP
                 if player_rect.bottom > ROAD_BOTTOM: player_rect.bottom = ROAD_BOTTOM
-                if player_rect.left < 0: player_rect.left = 0
-                if player_rect.right > WIDTH: player_rect.right = WIDTH
-
+                
                 # Spawn Obstacles
-                # Nitro makes obstacles spawn faster too!
                 spawn_speed_modifier = 20 if is_nitro else 20
                 current_spawn_rate = 1500 - (current_speed * spawn_speed_modifier) 
                 if current_spawn_rate < 300: current_spawn_rate = 300
@@ -212,22 +215,22 @@ def main():
                 # Move Obstacles
                 for wall in obstacles[:]:
                     wall.x -= actual_speed
-                    
                     if player_rect.colliderect(wall):
-                        # --- CRASH LOGIC ---
                         save_high_score(score)
+                        high_score = get_high_score() # Update Immediately
                         player_dead = True
-                        # Spawn particles
                         for _ in range(30):
-                            p = Particle(player_rect.centerx, player_rect.centery, (200, 50, 50)) # Red
+                            p = Particle(player_rect.centerx, player_rect.centery, (200, 50, 50))
                             particles.append(p)
-                            p2 = Particle(player_rect.centerx, player_rect.centery, (200, 200, 200)) # Grey
+                            p2 = Particle(player_rect.centerx, player_rect.centery, (100, 100, 100))
                             particles.append(p2)
                     
                     if wall.right < 0:
                         obstacles.remove(wall)
-                        # Nitro gives double points!
                         score += 2 if is_nitro else 1 
+
+        else:
+            actual_speed = 0
 
         # --- DRAWING ---
         screen.blit(bg_image, (bg_x, 0))
@@ -235,52 +238,70 @@ def main():
         
         if not player_dead:
             screen.blit(bike_image, player_rect)
-            # Draw Nitro flames if active
-            if game_active and not game_paused and (keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT]):
-                pygame.draw.circle(screen, (0, 255, 255), player_rect.midleft, random.randint(5, 15))
+            if is_nitro:
+                pygame.draw.circle(screen, (0, 255, 255), (player_rect.left, player_rect.centery + 5), random.randint(5, 15))
 
-        # Draw Particles (Explosion)
         for p in particles:
             p.draw(screen)
             
         for wall in obstacles:
             screen.blit(wall_image, wall)
 
-        # Draw UI
+        # --- UI OVERLAY (IN GAME) ---
         if game_active and not player_dead:
-            score_surf = font_score.render(f"Score: {score}", True, (255, 255, 255))
-            speed_surf = font_ui.render(f"Speed: {int(current_speed)} MPH", True, (0, 255, 255))
-            controls_surf = font_ui.render("HOLD SHIFT FOR NITRO!", True, (255, 100, 100))
-            
+            score_surf = font_score.render(f"SCORE: {score}", True, (255, 255, 255))
             screen.blit(score_surf, (20, 20))
-            screen.blit(speed_surf, (20, 60))
-            screen.blit(controls_surf, (20, 90))
             
+            display_speed = int(actual_speed * 12) 
+            if display_speed > 0: display_speed += 20 
+                
+            speed_color = (0, 255, 255) if not is_nitro else (255, 50, 50) 
+            speed_surf = font_score.render(f"{display_speed} KM/H", True, speed_color)
+            screen.blit(speed_surf, (20, 60))
+
+            # Nitro Bar
+            pygame.draw.rect(screen, (50, 50, 50), (20, 110, 200, 20))
+            current_bar_width = int((nitro_fuel / MAX_NITRO_FUEL) * 200)
+            bar_color = (0, 255, 0)
+            if nitro_fuel < 30: bar_color = (255, 0, 0)
+            pygame.draw.rect(screen, bar_color, (20, 110, current_bar_width, 20))
+            pygame.draw.rect(screen, (255, 255, 255), (20, 110, 200, 20), 2)
+            
+            nitro_text = font_ui.render("NITRO", True, (255, 255, 255))
+            screen.blit(nitro_text, (230, 110))
+
             if game_paused:
                  draw_text(screen, "PAUSED", font_gameover, (255, 255, 0), WIDTH//2, HEIGHT//2)
 
-        # Start Screen
+        # --- START MENU ---
         if not game_active and not player_dead:
             overlay = pygame.Surface((WIDTH, HEIGHT))
-            overlay.set_alpha(180)
+            overlay.set_alpha(200)
             overlay.fill((0,0,0))
             screen.blit(overlay, (0,0))
             
-            draw_text(screen, "TRON RIDER", font_gameover, (0, 255, 255), WIDTH//2, HEIGHT//2 - 50)
-            draw_text(screen, "Avoid Walls. Hold SHIFT for Nitro.", font_ui, (200, 200, 200), WIDTH//2, HEIGHT//2 + 20)
-            draw_text(screen, "Press SPACE to Start", font_score, (255, 255, 255), WIDTH//2, HEIGHT//2 + 80)
-            draw_text(screen, f"High Score: {high_score}", font_score, (255, 215, 0), WIDTH//2, HEIGHT//2 + 130)
+            draw_text(screen, "NEON RIDER", font_title, (0, 255, 255), WIDTH//2, HEIGHT//2 - 80)
+            draw_text(screen, "Use W / S to Move", font_ui, (200, 200, 200), WIDTH//2, HEIGHT//2 + 20)
+            draw_text(screen, "Hold SHIFT for Nitro", font_ui, (200, 200, 200), WIDTH//2, HEIGHT//2 + 50)
+            draw_text(screen, "PRESS SPACE TO START", font_score, (255, 255, 255), WIDTH//2, HEIGHT//2 + 100)
+            
+            # SHOW HIGH SCORE IN MENU
+            draw_text(screen, f"HIGH SCORE: {high_score}", font_score, (255, 215, 0), WIDTH//2, HEIGHT//2 + 150)
 
-        # Game Over Screen
+        # --- GAME OVER SCREEN ---
         if player_dead and all(p.life <= 0 for p in particles):
              overlay = pygame.Surface((WIDTH, HEIGHT))
              overlay.set_alpha(150)
-             overlay.fill((50,0,0)) # Red tint
+             overlay.fill((50,0,0)) 
              screen.blit(overlay, (0,0))
              
-             draw_text(screen, "WASTED", font_gameover, (255, 0, 0), WIDTH//2, HEIGHT//2 - 50)
+             draw_text(screen, "CRASHED", font_gameover, (255, 0, 0), WIDTH//2, HEIGHT//2 - 60)
              draw_text(screen, f"Score: {score}", font_score, (255, 255, 255), WIDTH//2, HEIGHT//2 + 20)
-             draw_text(screen, "Press SPACE to Retry", font_score, (255, 255, 255), WIDTH//2, HEIGHT//2 + 80)
+             
+             # SHOW HIGH SCORE IN GAME OVER
+             draw_text(screen, f"HIGH SCORE: {high_score}", font_score, (255, 215, 0), WIDTH//2, HEIGHT//2 + 60)
+             
+             draw_text(screen, "SPACE to Restart", font_score, (255, 255, 255), WIDTH//2, HEIGHT//2 + 120)
 
         pygame.display.flip()
         clock.tick(FPS)
